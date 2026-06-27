@@ -1,0 +1,8 @@
+# Compiled single binary (built via `deno task compile`)
+/transplant
+
+# Session bundles produced by `transplant pack`
+*.tar
+
+# Local scratch
+scratchpad/
