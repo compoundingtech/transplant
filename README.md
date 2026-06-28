@@ -1,125 +1,111 @@
 # transplant
 
-A small CLI to migrate [Claude Code](https://claude.com/claude-code) sessions
-between working directories — and between machines — without losing conversation
+A small CLI to migrate agent-CLI sessions — **Claude Code** and **Codex** —
+between working directories and between machines, without losing conversation
 history.
 
 ## Why
 
-Claude Code stores each session transcript at
-`~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`, keyed by the **working
-directory**. The encoded form is the absolute path with every non-alphanumeric
-character replaced by `-` (so `/path/to/my-project` becomes
-`-path-to-my-project`; dots and slashes both become `-`).
-
-Because the lookup is keyed by cwd, renaming or moving a project means
-`claude --resume` looks under the new directory's folder, finds nothing, and the
-history appears lost. `transplant` relocates the transcript (and its sidecars) to
-wherever the project now lives — on this machine or another.
+Agent CLIs store each session transcript on disk and tie session resumption to
+your working directory. Rename or move a project, or switch machines, and the
+lookup fails and the history appears lost. `transplant` relocates the transcript
+and its sidecars to wherever the project now lives — on this machine or another
+— behind one interface, with a per-harness understanding of each tool's real
+on-disk layout.
 
 ## Install
 
 Requires [Deno](https://deno.com/) 2.x.
 
-Run from source:
-
 ```sh
-deno run -A main.ts <command>
-```
-
-Or build a single binary:
-
-```sh
-deno task compile      # produces ./transplant
+deno run -A main.ts <command>     # from source
+deno task compile                 # build ./transplant
 ./transplant --help
 ```
 
 ## Commands
 
 ```
-transplant ls                                   # list local sessions
-transplant move <session-id> --to <dir>         # same machine, dir -> dir
-transplant pack <session-id> -o <bundle.tar>    # bundle for transport
-transplant import <bundle.tar> --to <dir>       # reconstruct on this machine
+transplant ls [--harness <claude-code|codex>]
+transplant move <session-id> --to <dir> [--from <dir>] [--harness <h>] [--fork-session]
+transplant pack <session-id> -o <bundle.tar> [--from <dir>] [--harness <h>]
+transplant import <bundle.tar> --to <dir> [--fork-session]
 ```
 
-`--to` / `--from` take absolute project directory paths. `--from` is only needed
-when the source directory can't be auto-detected (see
-[Resolving the source directory](#resolving-the-source-directory)).
+- `ls` lists local sessions across both harnesses
+  (`<harness> <id> <modified> <dir>`).
+- `move` relocates a session to another directory on this machine.
+- `pack` bundles a session for transport; `import` reconstructs it (the harness
+  is read from the bundle manifest, so `import` needs no `--harness`).
+- `--from` is only needed when the source directory can't be auto-detected.
+- `--harness` disambiguates if a session id somehow exists in both.
+- `--fork-session` assigns a fresh session-id at the destination so two
+  directories never point at one transcript.
 
-Both `move` and `import` accept `--fork-session`, which assigns a fresh
-session-id in the destination so two directories never point at one transcript
-file.
+A packed bundle is a tar of `manifest.json` (harness, original absolute cwd,
+session id, agent version), `transcript.jsonl` (the opaque transcript),
+`config-entry.json` (the cwd-keyed project config), and any sidecar files.
 
-### Examples
+## How each harness stores a session (verified on disk)
 
-Move a session after you renamed its project folder:
+The transcript is always treated as an **opaque blob** — never parsed for
+migration; its format is internal to each tool and changes between releases.
 
-```sh
-transplant move 1a2b3c4d-... --to /Users/me/code/renamed-project
-```
+### Claude Code (`~/.claude`)
 
-Carry a session to another machine:
+| Resource                                                     | Path                                                                                            | Migrated?                                                                                                                                                         |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Transcript                                                   | `projects/<encoded-cwd>/<id>.jsonl`                                                             | ✅                                                                                                                                                                |
+| Memory sidecar                                               | `projects/<encoded-cwd>/memory/`                                                                | ✅                                                                                                                                                                |
+| Project config                                               | `~/.claude.json` → `projects["<abs-cwd>"]` (trust, allowedTools, MCP enablement, lastSessionId) | ✅ (whole entry)                                                                                                                                                  |
+| File checkpoints / env                                       | `file-history/<run-id>/`, `session-env/<run-id>/`                                               | ❌ keyed by an **ephemeral harness run-id**, not the session id — there is no on-disk session→checkpoint mapping, and they are per-run working state, not history |
+| Shell snapshots, global command history, tasks/plans, caches | `shell-snapshots/`, `history.jsonl`, …                                                          | ❌ global or run-scoped, not part of a session                                                                                                                    |
 
-```sh
-# on the source machine
-transplant pack 1a2b3c4d-... -o session.tar
-scp session.tar other-machine:~
+`encoded-cwd` = the absolute path with every non-alphanumeric character replaced
+by `-` (`/path/to/my-project` → `-path-to-my-project`). This is lossy and cannot
+be decoded, so the real path is recovered from the `~/.claude.json` key (and the
+transcript only when consistent with the folder).
 
-# on the target machine (path may differ here)
-transplant import ~/session.tar --to /home/me/work/project
-```
+### Codex (`~/.codex`)
 
-## What a session actually consists of
+| Resource               | Path                                                                                                                           | Migrated?                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Transcript ("rollout") | `sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl` (date+uuid-keyed, **not** cwd-keyed; cwd lives inside the `session_meta` line) | ✅                                                                           |
+| Project trust          | `config.toml` → `[projects."<abs-cwd>"]` (`trust_level`)                                                                       | ✅                                                                           |
+| Credentials            | `auth.json`                                                                                                                    | ❌ per-machine secret — **never transported**; re-authenticate on the target |
+| Global stores          | `history.jsonl`, `state_*.sqlite`, `logs_*.sqlite`, `memories/`                                                                | ❌ global, not session-scoped                                                |
 
-1. **`<session-id>.jsonl`** — the transcript (the history). `transplant` treats
-   it as an **opaque blob** and never parses it for migration: the format is
-   internal to Claude Code and changes between releases. (`ls` does a tolerant,
-   best-effort peek for a one-line summary; it degrades silently and never
-   affects a move.)
-2. **`memory/`** — a sibling folder in the same project dir, if the session uses
-   memory. Also cwd-keyed; moves with the transcript.
-3. **`~/.claude.json` project entry** — keyed by the absolute cwd; carries trust
-   acceptance, tool permissions, MCP enablement, and `lastSessionId`. Migrating
-   it avoids re-prompts on first launch.
+Because Codex rollouts are date-keyed rather than cwd-keyed, a same-machine
+`move` does **not** relocate the transcript — it only re-keys the `[projects]`
+trust entry. `import` places the rollout at its date-bucketed path on the target
+and re-keys trust to the new cwd.
 
-A packed bundle is a tar containing `manifest.json` (original absolute cwd,
-session id, Claude version), `transcript.jsonl`, the relevant `project-config.json`
-subset, and any `memory/` files.
-
-## Resolving the source directory
-
-The encoded folder name is **lossy** and cannot be decoded back to a real path.
-To migrate the `~/.claude.json` entry, `transplant` recovers the directory a
-session is currently keyed under by matching the encoded folder against your
-`~/.claude.json` project keys (the transcript's own embedded path is used only
-when it's consistent with the folder, since it goes stale after a move). If
-neither is available, pass `--from <dir>` explicitly.
+If a resource is intentionally not migrated, the table says so and why — nothing
+is silently dropped.
 
 ## Cross-machine notes
 
-`import` recomputes the encoded-cwd for wherever the project lives on the target
+`import` recomputes the destination for wherever the project lives on the target
 machine. Be aware that:
 
-- MCP servers, hooks, and CLI tools the session references must also exist on the
-  target machine.
-- Authentication is per-machine — credentials are **not** transported. Sign in
-  again on the new machine.
-- Absolute paths baked into the conversation history are not rewritten; old
-  references may not resolve if the project lives at a different path.
+- MCP servers, hooks, and CLI tools the session references must also exist
+  there.
+- Authentication is per-machine — credentials are **not** transported.
+- Absolute paths baked into conversation history are not rewritten.
 
 ## Architecture
 
-Pure core, thin shell. The logic — `encodeCwd`, path computation, session
-discovery, manifest build/verify, project-config extract/rewrite, and bundle
-pack/unpack — lives in pure functions under `src/core/`, unit-tested against a
-synthetic fake `$HOME/.claude` root. The CLI in `src/cli.ts` only parses
-arguments and performs I/O.
+Pure core, thin shell, harness abstraction. A `Harness` (Claude Code, Codex)
+encapsulates session discovery, cwd resolution, the sidecar set, and path logic;
+the CLI and a small generic migrate layer drive them. The pure functions
+(`encodeCwd`, path computation, session discovery, config extract/rewrite,
+manifest build/verify, bundle pack/unpack, Codex TOML editing) are unit-tested
+against synthetic fake `$HOME` roots — no real agent state in tests.
 
 The official Claude Agent SDK is **not** bundled in the shipped binary (it pulls
-a large transitive dependency tree just to list sessions). Instead it is a
-dev-only dependency used as a test oracle: a test asserts that `transplant`'s own
-session listing agrees with the SDK's `listSessions` on synthetic fixtures.
+a large transitive dependency tree just to list sessions). It is a dev-only test
+oracle: a test asserts that `transplant`'s own Claude listing agrees with the
+SDK's `listSessions` on synthetic fixtures.
 
 ## Development
 
@@ -130,7 +116,7 @@ deno fmt
 deno task compile  # build ./transplant
 ```
 
-All fixtures are synthetic; no real Claude state is used in tests.
+All fixtures are synthetic; no real Claude or Codex state is used in tests.
 
 ## License
 

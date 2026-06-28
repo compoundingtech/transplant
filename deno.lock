@@ -3,12 +3,14 @@
   "specifiers": {
     "jsr:@std/assert@^1.0.8": "1.0.19",
     "jsr:@std/cli@^1.0.9": "1.0.28",
+    "jsr:@std/collections@^1.1.3": "1.2.0",
     "jsr:@std/fs@^1.0.6": "1.0.23",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@^1.0.8": "1.1.4",
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/streams@^1.0.17": "1.0.17",
     "jsr:@std/tar@~0.1.10": "0.1.10",
+    "jsr:@std/toml@^1.0.2": "1.0.11",
     "npm:@anthropic-ai/claude-agent-sdk@0.3.195": "0.3.195_@anthropic-ai+sdk@0.106.0__zod@4.4.3_@modelcontextprotocol+sdk@1.29.0__zod@4.4.3_zod@4.4.3"
   },
   "jsr": {
@@ -23,6 +25,9 @@
       "dependencies": [
         "jsr:@std/internal"
       ]
+    },
+    "@std/collections@1.2.0": {
+      "integrity": "47627a21d3a13138b77fd0e4d790ba9d2e603c3510b686cde6b132fe9aa98a88"
     },
     "@std/fs@1.0.23": {
       "integrity": "3ecbae4ce4fee03b180fa710caff36bb5adb66631c46a6460aaad49515565a37",
@@ -47,6 +52,12 @@
       "integrity": "6bf907f3a4bc8bfef42973ba132d946756a6161ef6b914a9e1c06debe664db17",
       "dependencies": [
         "jsr:@std/streams"
+      ]
+    },
+    "@std/toml@1.0.11": {
+      "integrity": "e084988b872ca4bad6aedfb7350f6eeed0e8ba88e9ee5e1590621c5b5bb8f715",
+      "dependencies": [
+        "jsr:@std/collections"
       ]
     }
   },
@@ -670,6 +681,7 @@
       "jsr:@std/fs@^1.0.6",
       "jsr:@std/path@^1.0.8",
       "jsr:@std/tar@~0.1.10",
+      "jsr:@std/toml@^1.0.2",
       "npm:@anthropic-ai/claude-agent-sdk@0.3.195"
     ]
   }

@@ -101,3 +101,67 @@ export async function setProjectEntry(
   config.projects = { ...(config.projects ?? {}), [cwd]: entry };
   await writeConfig(roots.configPath, config);
 }
+
+// ---- Codex fixtures ----------------------------------------------------------
+
+export interface SyntheticCodexOpts {
+  /** Filename timestamp portion, e.g. "2026-06-23T23-09-12". */
+  ts?: string;
+  /** Trust level to record in config.toml [projects."<cwd>"]; omitted = no entry. */
+  trustLevel?: string;
+  /** cwd recorded in the session_meta line (defaults to `cwd`). */
+  metaCwd?: string;
+}
+
+/**
+ * Write a synthetic Codex rollout under a fake `~/.codex` and optionally a
+ * trust entry in config.toml. Returns the rollout's absolute path.
+ */
+export async function writeSyntheticCodexSession(
+  home: string,
+  cwd: string,
+  uuid: string,
+  opts: SyntheticCodexOpts = {},
+): Promise<string> {
+  const ts = opts.ts ?? "2026-06-23T23-09-12";
+  const [y, m, d] = ts.split("T")[0].split("-");
+  const name = `rollout-${ts}-${uuid}.jsonl`;
+  const dir = `${home}/.codex/sessions/${y}/${m}/${d}`;
+  await ensureDir(dir);
+  const lines = [
+    JSON.stringify({
+      type: "session_meta",
+      timestamp: `${ts}Z`,
+      payload: { id: uuid, cwd: opts.metaCwd ?? cwd, cli_version: "9.9.9" },
+    }),
+    JSON.stringify({ type: "response_item", payload: { role: "assistant" } }),
+  ];
+  const path = `${dir}/${name}`;
+  await Deno.writeTextFile(path, lines.join("\n") + "\n");
+
+  if (opts.trustLevel !== undefined) {
+    await setCodexTrust(home, cwd, opts.trustLevel);
+  }
+  return path;
+}
+
+/** Upsert a [projects."<cwd>"] trust entry in the fake config.toml. */
+export async function setCodexTrust(
+  home: string,
+  cwd: string,
+  trustLevel: string,
+): Promise<void> {
+  const path = `${home}/.codex/config.toml`;
+  await ensureDir(`${home}/.codex`);
+  let text = "";
+  try {
+    text = await Deno.readTextFile(path);
+  } catch (err) {
+    if (!(err instanceof Deno.errors.NotFound)) throw err;
+  }
+  const { upsertCodexProject } = await import("../src/core/codex_config.ts");
+  await Deno.writeTextFile(
+    path,
+    upsertCodexProject(text, cwd, { trust_level: trustLevel }),
+  );
+}
