@@ -10,7 +10,7 @@ Deno.test("encodeCwd: dots and slashes both collapse to hyphen", () => {
 });
 
 Deno.test("encodeCwd: keeps alphanumerics, including digits and mixed case", () => {
-  assertEquals(encodeCwd("/Users/Dev99/Proj"), "-Users-Dev99-Proj");
+  assertEquals(encodeCwd("/Users/Example99/Proj"), "-Users-Example99-Proj");
 });
 
 Deno.test("encodeCwd: collapses runs of separators 1:1 (not deduped)", () => {
