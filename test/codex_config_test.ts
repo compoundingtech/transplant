@@ -66,7 +66,7 @@ Deno.test("removeCodexProject: drops a section, keeps others", () => {
 });
 
 Deno.test("upsertCodexProject: round-trips a path containing special chars", () => {
-  const cwd = "/Users/dev/My Project.v2";
+  const cwd = "/Users/example/My Project.v2";
   const next = upsertCodexProject(SAMPLE, cwd, { trust_level: "trusted" });
   const parsed = parseToml(next) as Record<string, unknown>;
   assert(extractCodexProject(parsed, cwd) !== null);

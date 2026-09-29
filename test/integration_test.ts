@@ -16,7 +16,7 @@ import {
 
 Deno.test("e2e Claude: pack on one machine, import onto another at a NEW path", async () => {
   await using src = await makeFakeRoot();
-  const srcCwd = "/Users/alice/projects/app";
+  const srcCwd = "/Users/example/projects/app";
   const id = "abcd-1234";
   await writeSyntheticSession(src.roots, srcCwd, id, {
     summary: "ported",
@@ -38,7 +38,7 @@ Deno.test("e2e Claude: pack on one machine, import onto another at a NEW path", 
   assertEquals(manifest.sidecarCount, 2);
 
   await using dst = await makeFakeRoot();
-  const dstCwd = "/home/bob/work/app";
+  const dstCwd = "/home/example/work/app";
   const result = await importBundle(dst.home, bundle, dstCwd, { fork: false });
 
   assertEquals(result.harness, "claude-code");
@@ -51,7 +51,7 @@ Deno.test("e2e Claude: pack on one machine, import onto another at a NEW path", 
   assertEquals(result.sidecarsWritten, 2);
   assertEquals(
     await Deno.readTextFile(
-      `${dst.roots.claudeDir}/projects/-home-bob-work-app/memory/n.md`,
+      `${dst.roots.claudeDir}/projects/-home-example-work-app/memory/n.md`,
     ),
     "remembered\n",
   );
@@ -62,7 +62,7 @@ Deno.test("e2e Claude: pack on one machine, import onto another at a NEW path", 
 
 Deno.test("e2e Codex: pack rollout + trust, import onto another machine at a NEW path", async () => {
   await using src = await makeFakeRoot();
-  const srcCwd = "/Users/alice/code/proj";
+  const srcCwd = "/Users/example/code/proj";
   const uuid = "0a1b2c3d-4e5f-6789-abcd-ef0123456789";
   await writeSyntheticCodexSession(src.home, srcCwd, uuid, {
     ts: "2026-06-23T23-09-12",
